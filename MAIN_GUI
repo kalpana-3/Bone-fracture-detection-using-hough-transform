@@ -1,0 +1,183 @@
+import tkinter
+import tkinter.filedialog
+from PIL import Image,ImageTk
+from torchvision import transforms as transforms
+import os
+from skimage.io import imread
+from skimage.transform import resize
+from skimage.feature import hog
+from skimage import exposure
+import matplotlib.pyplot as plt
+import numpy as np
+import imageio
+import math
+global original
+outfile = './'
+win = tkinter.Tk()
+win.title("Bone Fracture Detection")
+win.geometry("1280x1080")
+original = Image.new('RGB', (300, 400))
+save_img = Image.new('RGB', (300, 400))
+count =0
+img2 = tkinter.Label(win)
+def choose_file():
+	select_file = tkinter.filedialog.askopenfilename(title='Select Image')
+	e.set(select_file)
+	load = Image.open(select_file)
+	load = transforms.Resize((300,400))(load)
+	file1 = open("ip.txt","w")
+	file1.writelines(select_file)
+	file1.close()
+	original = load
+	original.save('ip.jpg')
+	render = ImageTk.PhotoImage(load)
+	img  = tkinter.Label(win,image=render)
+	img.image = render
+	img.place(x=100,y=100)
+def HOG():
+global count
+count += 1
+img = imread('ip.jpg')
+plt.axis("off")
+plt.imshow(img)
+print(img.shape)
+resized_img = resize(img, (128*4, 64*4))
+plt.axis("off")
+plt.imshow(resized_img)
+print(resized_img.shape)
+fd, hog_image = hog(resized_img, orientations=9, pixels_per_cell=(8, 8),
+	cells_per_block=(2, 2), visualize=True, multichannel=True)
+plt.axis("off")
+plt.imshow(hog_image, cmap="gray")
+plt.show()
+ 
+def rgb2gray(rgb):
+return np.dot(rgb[..., :3], [0.299, 0.587, 0.114]).astype(np.uint8)
+ 
+ 
+def hough_line(img, angle_step=1, lines_are_white=True, value_threshold=5):
+ 
+    # Rho and Theta ranges
+thetas = np.deg2rad(np.arange(-90.0, 90.0, angle_step))
+width, height = img.shape
+diag_len = int(round(math.sqrt(width * width + height * height)))
+rhos = np.linspace(-diag_len, diag_len, diag_len * 2)
+ 
+    # Cache some resuable values
+cos_t = np.cos(thetas)
+sin_t = np.sin(thetas)
+num_thetas = len(thetas)
+ 
+    # Hough accumulator array of theta vs rho
+accumulator = np.zeros((2 * diag_len, num_thetas), dtype=np.uint8)
+    # (row, col) indexes to edges
+are_edges = img>value_threshold if lines_are_white else img<value_threshold
+y_idxs, x_idxs = np.nonzero(are_edges)
+ 
+    # Vote in the hough accumulator
+for i in range(len(x_idxs)):
+        x = x_idxs[i]
+        y = y_idxs[i]
+ 
+for t_idx in range(num_thetas):
+            # Calculate rho. diag_len is added for a positive index
+rho = diag_len + int(round(x * cos_t[t_idx] + y * sin_t[t_idx]))
+accumulator[rho, t_idx] += 1
+return accumulator, thetas, rhos
+ 
+def show_hough_line(img, accumulator, thetas, rhos, save_path=None):
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots(1, 2, figsize=(10, 10))
+ 
+ax[0].imshow(img, cmap=plt.cm.gray)
+ax[0].set_title('Input image')
+ax[0].axis('image')
+ 
+ax[1].imshow(
+accumulator, cmap='jet',
+extent=[np.rad2deg(thetas[-1]), np.rad2deg(thetas[0]), rhos[-1], rhos[0]])
+ax[1].set_aspect('equal', adjustable='box')
+ax[1].set_title('Hough transform')
+ax[1].set_xlabel('Angles (degrees)')
+ax[1].set_ylabel('Distance (pixels)')
+ax[1].axis('image')
+ 
+    # plt.axis('off')
+if save_path is not None:
+plt.savefig(save_path, bbox_inches='tight')
+plt.show()
+ 
+def hough():
+imgpath = 'ip.jpg'
+img = imageio.imread(imgpath)
+if img.ndim == 3:
+img = rgb2gray(img)
+accumulator, thetas, rhos = hough_line(img)
+show_hough_line(img, accumulator,thetas, rhos, save_path='output.png')
+	
+ 
+def edge_detect():
+from PIL import Image, ImageFilter
+image = Image.open("ip.jpg")
+image = image.convert("L")
+image = image.filter(ImageFilter.FIND_EDGES)
+image.save("Edge_Sample.png")
+plt.axis("off")
+plt.imshow(image)
+plt.show()
+def invert_img(img):
+img = (255-img)
+return img
+def result():
+import main
+def segmentation():
+import numpy as np
+import cv2
+from matplotlib import pyplot as plt
+import imutils
+img = cv2.imread('ip.jpg')
+img = imutils.resize(img, height = 300)
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+ret, thresh = cv2.threshold(gray,0,255,cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
+thresh = invert_img(thresh)
+kernel = np.ones((3,3), np.uint8)
+opening = cv2.morphologyEx(thresh,cv2.MORPH_OPEN,kernel, iterations = 4)
+sure_bg = cv2.dilate(opening,kernel,iterations=3)
+        #sure_bg = cv2.morphologyEx(sure_bg, cv2.MORPH_TOPHAT, kernel)
+dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
+ret, sure_fg = cv2.threshold(dist_transform,0.7*dist_transform.max(),255,0)
+sure_fg = np.uint8(sure_fg)
+unknown = cv2.subtract(sure_bg,sure_fg)
+ret, markers = cv2.connectedComponents(sure_fg)
+markers = markers+1
+markers[unknown==255] = 0
+markers = cv2.watershed(img,markers)
+img[markers == -1] = [255,0,0]
+cv2.imshow('background',sure_bg)
+cv2.imshow('foreground',sure_fg)
+cv2.imshow('threshold',thresh)
+cv2.imshow('result',img)
+cv2.waitKey(0)
+e = tkinter.StringVar()
+e_entry = tkinter.Entry(win, width=68, textvariable=e)
+e_entry.pack()
+button1 = tkinter.Button(win, text ="Select", command = choose_file)
+button1.pack()
+ 
+label1 = tkinter.Label(win,text="Original Picture")
+label1.place(x=200,y=50)
+button2 = tkinter.Button(win,text="HOG",command=HOG)
+button2.place(x=600,y=100)
+ 
+button2 = tkinter.Button(win,text="Hough Transform",command=hough)
+button2.place(x=600,y=150)
+ 
+button0 = tkinter.Button(win,text="Edge Detection",command=edge_detect)
+button0.place(x=600,y=200)
+ 
+button3 = tkinter.Button(win,text="Segmentation",command=segmentation)
+button3.place(x=600,y=250)
+button3 = tkinter.Button(win,text="Result",command=result)
+button3.place(x=600,y=300)
+win.mainloop()
+ 
